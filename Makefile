@@ -68,6 +68,11 @@ LIBRELANE_CONFIGS = librelane/slots/slot_${SLOT}.yaml librelane/macros/macros_${
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
+	@echo 'From ./docker.sh (or: nix develop --command make …):'
+	@echo '  git submodule update --init'
+	@echo '  make clone-pdk'
+	@echo '  make librelane'
+	@echo ''
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 .PHONY: help
@@ -90,15 +95,19 @@ defines:
 	$(file >>src/generated_defines.svh,`define ${SRAM_DEFINE})
 .PHONY: defines
 
-librelane: clone-pdk defines ## Run LibreLane flow (synthesis, PnR, verification)
+fx68k-rtl: ## sv2v fx68k into build/fx68k-v (submodule src_v/ is not written)
+	./scripts/fx68k-rtl.sh
+.PHONY: fx68k-rtl
+
+librelane: clone-pdk defines fx68k-rtl ## Run LibreLane Chip flow
 	SRAM_DEFINE=${SRAM_DEFINE} librelane ${LIBRELANE_CONFIGS} ${LIBRELANE_OPTS} --save-views-to $(MAKEFILE_DIR)/final
 .PHONY: librelane
 
-librelane-condensed: clone-pdk defines ## Run LibreLane flow (synthesis, PnR, verification)
+librelane-condensed: clone-pdk defines fx68k-rtl ## Run LibreLane Chip flow (condensed log)
 	SRAM_DEFINE=${SRAM_DEFINE} librelane --condensed ${LIBRELANE_CONFIGS} ${LIBRELANE_OPTS} --save-views-to $(MAKEFILE_DIR)/final
 .PHONY: librelane-condensed
 
-librelane-nodrc: clone-pdk defines ## Run LibreLane flow without DRC checks
+librelane-nodrc: clone-pdk defines fx68k-rtl ## Run LibreLane flow without DRC checks
 	SRAM_DEFINE=${SRAM_DEFINE} librelane ${LIBRELANE_CONFIGS} ${LIBRELANE_OPTS} --save-views-to $(MAKEFILE_DIR)/final --skip KLayout.Antenna --skip KLayout.DRC --skip Magic.DRC
 .PHONY: librelane-nodrc
 

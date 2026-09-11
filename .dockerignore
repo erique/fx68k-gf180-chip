@@ -1,0 +1,5 @@
+*
+!flake.nix
+!flake.lock
+!docker/entrypoint.sh
+!docker/nix-env.sh

@@ -1,12 +1,22 @@
-# gf180mcu Project Template
+# fx68k wafer.space chip (GF180MCU)
 
-Project template for wafer.space MPW runs using the gf180mcu PDK.
+[gf180mcu-project-template](https://github.com/wafer-space/gf180mcu-project-template)
+with [fx68k](https://github.com/ijor/fx68k) in `chip_core`. The core ASIC flow
+lives in the `fx68k/` submodule (`https://github.com/erique/fx68k-gf180`).
 
 ## Dependencies
 
-Too manage all dependencies, the project template includes a Nix shell with all the required tools.
-Install Nix and LibreLane by following the Nix-based installation instructions: https://librelane.readthedocs.io/en/latest/installation/nix_installation/index.html
-To activate the shell, simply run `nix-shell` in the root directory of this repository. The subsequent steps assume that you are in the Nix shell of the project template.
+Docker matches `.github/workflows/ci.yml`: Ubuntu 24.04, Determinate Nix,
+fossi cache, then `nix develop --command make …`.
+
+```sh
+git submodule update --init
+./docker.sh build
+./docker.sh make clone-pdk
+./docker.sh make librelane-condensed
+```
+
+Host Nix: same commands without Docker (`nix develop --command make clone-pdk`).
 
 ## Prerequisites
 

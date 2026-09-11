@@ -55,6 +55,7 @@
               gnumake
               gnugrep
               gawk
+              haskellPackages.sv2v
 
               # Simulation
               iverilog
