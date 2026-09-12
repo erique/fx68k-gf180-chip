@@ -18,6 +18,17 @@ git submodule update --init
 
 Host Nix: same commands without Docker (`nix develop --command make clone-pdk`).
 
+## Pad map (1x1, 74-ball LGA)
+
+CLK = `clk_PAD`. RESET = `rst_n_PAD` (bidir, CPU may pull low).
+
+`bidir_PAD[57:0]`: A1–A23 `[22:0]`, D0–D15 `[38:23]`, AS/UDS/LDS/R/W `[39:42]`,
+DTACK/BERR/HALT `[43:45]`, VPA/E/VMA `[46:48]`, FC0–2 `[49:51]`,
+BR/BG/BGACK `[52:54]`, IPL0–2 `[55:57]`.
+
+Four former I/O DVDD sites are GPIO. The stock wafer.space COB straps those
+balls to 5 V; a full 68000 pinout needs a carrier that does not.
+
 ## Prerequisites
 
 The project template uses the open_pdks gf180mcuD variant of the PDK.

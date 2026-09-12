@@ -55,19 +55,30 @@ module chip_top #(
 
     inout  wire clk_PAD,
     inout  wire rst_n_PAD,
-    
+
+    inout  wire [NUM_BIDIR_PADS-1:0] bidir_PAD
+`ifndef SLOT_1X1
+    ,
     inout  wire [NUM_INPUT_PADS-1:0] input_PAD,
-    inout  wire [NUM_BIDIR_PADS-1:0] bidir_PAD,
-    
     inout  wire [NUM_ANALOG_PADS-1:0] analog_PAD
+`endif
 );
 
     wire clk_PAD2CORE;
-    wire rst_n_PAD2CORE;
-    
+    wire rst_PAD2CORE;
+    wire rst_CORE2PAD;
+    wire rst_CORE2PAD_OE;
+    wire rst_CORE2PAD_IE;
+    wire rst_CORE2PAD_PU;
+    wire rst_CORE2PAD_PD;
+    wire rst_CORE2PAD_CS;
+    wire rst_CORE2PAD_SL;
+
+`ifndef SLOT_1X1
     wire [NUM_INPUT_PADS-1:0] input_PAD2CORE;
     wire [NUM_INPUT_PADS-1:0] input_CORE2PAD_PU;
     wire [NUM_INPUT_PADS-1:0] input_CORE2PAD_PD;
+`endif
 
     wire [NUM_BIDIR_PADS-1:0] bidir_PAD2CORE;
     wire [NUM_BIDIR_PADS-1:0] bidir_CORE2PAD;
@@ -153,22 +164,28 @@ module chip_top #(
         .PD     (1'b0)
     );
     
-    // Normal input
-    `gf180mcu_xxx_io__in_c rst_n_pad (
+    // 68000 RESET: open-drain style bidir (CPU can pull low).
+    `gf180mcu_xxx_io__bi_24t rst_n_pad (
         `ifdef USE_POWER_PINS
         .DVDD   (DVDD),
         .DVSS   (DVSS),
         .VDD    (VDD),
         .VSS    (VSS),
         `endif
-    
-        .Y      (rst_n_PAD2CORE),
+
+        .A      (rst_CORE2PAD),
+        .OE     (rst_CORE2PAD_OE),
+        .Y      (rst_PAD2CORE),
         .PAD    (rst_n_PAD),
-        
-        .PU     (1'b0),
-        .PD     (1'b0)
+
+        .CS     (rst_CORE2PAD_CS),
+        .SL     (rst_CORE2PAD_SL),
+        .IE     (rst_CORE2PAD_IE),
+        .PU     (rst_CORE2PAD_PU),
+        .PD     (rst_CORE2PAD_PD)
     );
 
+`ifndef SLOT_1X1
     generate
     for (genvar i=0; i<NUM_INPUT_PADS; i++) begin : inputs
         (* keep *)
@@ -179,15 +196,16 @@ module chip_top #(
             .VDD    (VDD),
             .VSS    (VSS),
             `endif
-        
+
             .Y      (input_PAD2CORE[i]),
             .PAD    (input_PAD[i]),
-            
+
             .PU     (input_CORE2PAD_PU[i]),
             .PD     (input_CORE2PAD_PD[i])
         );
     end
     endgenerate
+`endif
 
     generate
     for (genvar i=0; i<NUM_BIDIR_PADS; i++) begin : bidir
@@ -215,6 +233,7 @@ module chip_top #(
     end
     endgenerate
 
+`ifndef SLOT_1X1
     generate
     for (genvar i=0; i<NUM_ANALOG_PADS; i++) begin : analog
         (* keep *)
@@ -229,25 +248,27 @@ module chip_top #(
         );
     end
     endgenerate
+`endif
 
     // Core design
 
     chip_core #(
-        .NUM_INPUT_PADS  (NUM_INPUT_PADS),
-        .NUM_BIDIR_PADS  (NUM_BIDIR_PADS),
-        .NUM_ANALOG_PADS (NUM_ANALOG_PADS)
+        .NUM_BIDIR_PADS  (NUM_BIDIR_PADS)
     ) i_chip_core (
         `ifdef USE_POWER_PINS
         .VDD        (VDD),
         .VSS        (VSS),
         `endif
-    
+
         .clk        (clk_PAD2CORE),
-        .rst_n      (rst_n_PAD2CORE),
-    
-        .input_in   (input_PAD2CORE),
-        .input_pu   (input_CORE2PAD_PU),
-        .input_pd   (input_CORE2PAD_PD),
+        .rst_in     (rst_PAD2CORE),
+        .rst_out    (rst_CORE2PAD),
+        .rst_oe     (rst_CORE2PAD_OE),
+        .rst_ie     (rst_CORE2PAD_IE),
+        .rst_pu     (rst_CORE2PAD_PU),
+        .rst_pd     (rst_CORE2PAD_PD),
+        .rst_cs     (rst_CORE2PAD_CS),
+        .rst_sl     (rst_CORE2PAD_SL),
 
         .bidir_in   (bidir_PAD2CORE),
         .bidir_out  (bidir_CORE2PAD),
@@ -256,9 +277,7 @@ module chip_top #(
         .bidir_sl   (bidir_CORE2PAD_SL),
         .bidir_ie   (bidir_CORE2PAD_IE),
         .bidir_pu   (bidir_CORE2PAD_PU),
-        .bidir_pd   (bidir_CORE2PAD_PD),
-        
-        .analog     (analog_PAD)
+        .bidir_pd   (bidir_CORE2PAD_PD)
     );
     
     // Do not remove, necessary for tapeout

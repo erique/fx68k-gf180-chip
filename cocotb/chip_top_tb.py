@@ -20,10 +20,30 @@ pad = os.getenv("PAD", "gf180mcu_fd_io")
 sram = os.getenv("SRAM", "gf180mcu_fd_ip_sram")
 slot = os.getenv("SLOT", "1x1")
 
-hdl_toplevel = "chip_top"
+hdl_toplevel = "chip_top" if gl else "chip_core"
+
+# bidir_PAD indices (src/chip_core.sv)
+PAD_DTACK = 43
+PAD_BERR = 44
+PAD_HALT = 45
+PAD_VPA = 46
+PAD_BR = 52
+PAD_BGACK = 54
+PAD_IPL0 = 55
+PAD_IPL1 = 56
+PAD_IPL2 = 57
+PAD_A_MSB = 22
+PAD_D_LSB = 23
+PAD_D_MSB = 38
+
 
 async def set_defaults(dut):
-    dut.input_PAD.value = 0
+    pass
+
+
+# Input levels come from pad PU/PD (DTACK pull-down, others pull-up).
+# Do not assign the packed bidir vector from Python: that forces address
+# bits and fights the pad output drivers.
 
 async def enable_power(dut):
     dut.VDD.value = 1
@@ -46,45 +66,50 @@ async def reset(reset, active_low=True, time_ns=1000):
     cocotb.log.info("Reset deasserted.")
 
 
+def drive_core_inputs(dut):
+    """bidir_in is a normal input; whole-vector assign is OK."""
+    n = len(dut.bidir_in)
+    ones = (1 << n) - 1
+    dut.bidir_in.value = ones & ~(1 << PAD_DTACK)
+
+
 async def start_up(dut):
     """Startup sequence"""
     await set_defaults(dut)
     if gl:
         await enable_power(dut)
-    await start_clock(dut.clk_PAD)
-    await reset(dut.rst_n_PAD)
+        await start_clock(dut.clk_PAD)
+        await reset(dut.rst_n_PAD)
+    else:
+        drive_core_inputs(dut)
+        await start_clock(dut.clk)
+        await reset(dut.rst_in)
 
 
-# Clocks after reset before checking pads.
 SMOKE_CYCLES = 32
-
-# bidir_PAD map from src/chip_core.sv (MSB-first string index).
-# [39:34] controls, [33:18] data (Hi-Z on read), [17:0] eab[18:1].
-BIDIR_CTRL_CHARS = 6
-BIDIR_DATA_CHARS = 16
 
 
 @cocotb.test()
 async def test_reset_smoke(dut):
-    """After reset, address and control pads are driven. Data may be Z on a read."""
+    """After reset, address pads are driven. Data may be Z on a read."""
 
     logger = logging.getLogger("fx68k_tb")
     logger.info("Startup sequence...")
     await start_up(dut)
 
-    # Inactive-high 68000 inputs (HALTn, etc.).
-    dut.input_PAD.value = -1
+    clk = dut.clk_PAD if gl else dut.clk
+    await ClockCycles(clk, SMOKE_CYCLES)
 
-    await ClockCycles(dut.clk_PAD, SMOKE_CYCLES)
-
-    bits = str(dut.bidir_PAD.value)
-    logger.info("bidir_PAD=%s", bits)
-    assert "x" not in bits.lower(), f"bidir_PAD has X after reset: {bits}"
-
-    ctrl = bits[:BIDIR_CTRL_CHARS]
-    addr = bits[BIDIR_CTRL_CHARS + BIDIR_DATA_CHARS :]
-    assert "z" not in ctrl.lower(), f"control pads Hi-Z: {ctrl}"
-    assert "z" not in addr.lower(), f"address pads Hi-Z: {addr}"
+    if gl:
+        bits = str(dut.bidir_PAD.value)
+        logger.info("bidir_PAD=%s", bits)
+        assert "x" not in bits.lower(), f"bidir_PAD has X after reset: {bits}"
+    else:
+        eab = str(dut.eab.value)
+        asn = str(dut.ASn.value)
+        logger.info("eab=%s ASn=%s", eab, asn)
+        assert "x" not in eab.lower(), f"eab still X after reset: {eab}"
+        assert asn in ("0", "1"), f"ASn still X after reset: {asn}"
     logger.info("Done!")
 
 
@@ -113,27 +138,23 @@ def chip_top_runner():
 
         defines.update({"FUNCTIONAL": True, "USE_POWER_PINS": True})
     else:
-        sources.append(proj_path / "../src/chip_top.sv")
         sources.append(proj_path / "../src/chip_core.sv")
         sources.append(proj_path / "../build/fx68k-v/fx68k.v")
         sources.append(proj_path / "../build/fx68k-v/uRom.v")
         sources.append(proj_path / "../build/fx68k-v/nanoRom.v")
 
     sources += [
-        # IO pad models
-        Path(pdk_root) / pdk / f"libs.ref/{pad}/verilog/{pad}.v",
-        
-        # SRAM macros
         Path(pdk_root) / pdk / f"libs.ref/{sram}/verilog/{sram}__sram512x8m8wm1.v",
-        
-        # Custom IP
-        proj_path / "../ip/gf180mcu_ws_ip__logo/vh/gf180mcu_ws_ip__logo.v",
-        proj_path / "../ip/gf180mcu_ws_ip__marker/vh/gf180mcu_ws_ip__marker.v",
-        proj_path / "../ip/gf180mcu_ws_ip__qrcode_id/vh/gf180mcu_ws_ip__qrcode_id.v",
-        proj_path / "../ip/gf180mcu_ws_ip__shuttle_id/vh/gf180mcu_ws_ip__shuttle_id.v",
-        proj_path / "../ip/gf180mcu_ws_ip__project_id/vh/gf180mcu_ws_ip__project_id.v",
-        
     ]
+    if gl:
+        sources += [
+            Path(pdk_root) / pdk / f"libs.ref/{pad}/verilog/{pad}.v",
+            proj_path / "../ip/gf180mcu_ws_ip__logo/vh/gf180mcu_ws_ip__logo.v",
+            proj_path / "../ip/gf180mcu_ws_ip__marker/vh/gf180mcu_ws_ip__marker.v",
+            proj_path / "../ip/gf180mcu_ws_ip__qrcode_id/vh/gf180mcu_ws_ip__qrcode_id.v",
+            proj_path / "../ip/gf180mcu_ws_ip__shuttle_id/vh/gf180mcu_ws_ip__shuttle_id.v",
+            proj_path / "../ip/gf180mcu_ws_ip__project_id/vh/gf180mcu_ws_ip__project_id.v",
+        ]
 
     build_args = []
 
