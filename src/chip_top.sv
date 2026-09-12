@@ -6,12 +6,6 @@
 `include "generated_defines.svh"
 `include "slot_defines.svh"
 
-`ifdef SRAM_gf180mcu_ocd_ip_sram
-`define gf180mcu_xxx_ip_sram__sram512x8m8wm1 gf180mcu_ocd_ip_sram__sram512x8m8wm1
-`else
-`define gf180mcu_xxx_ip_sram__sram512x8m8wm1 gf180mcu_fd_ip_sram__sram512x8m8wm1
-`endif
-
 `ifdef PAD_gf180mcu_ocd_io
 `define gf180mcu_xxx_io__vdd gf180mcu_ocd_io__vdd
 `define gf180mcu_xxx_io__vss gf180mcu_ocd_io__vss

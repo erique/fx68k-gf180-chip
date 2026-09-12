@@ -7,12 +7,6 @@
 `include "generated_defines.svh"
 `include "slot_defines.svh"
 
-`ifdef SRAM_gf180mcu_ocd_ip_sram
-`define gf180mcu_xxx_ip_sram__sram512x8m8wm1 gf180mcu_ocd_ip_sram__sram512x8m8wm1
-`else
-`define gf180mcu_xxx_ip_sram__sram512x8m8wm1 gf180mcu_fd_ip_sram__sram512x8m8wm1
-`endif
-
 // 1x1 74-pad LGA: clk_PAD = CLK (in_s), rst_n_PAD = RESET (bi_24t OD),
 // bidir_PAD[57:0] = remaining 68000 signals (all bi_24t).
 //
@@ -79,8 +73,6 @@ module chip_core #(
     localparam PAD_IPL2 = 57;
     localparam ADDR_W = PAD_A_MSB - PAD_A_LSB + 1;
     localparam DATA_W = PAD_D_MSB - PAD_D_LSB + 1;
-    localparam SRAM_AW = 9;
-    localparam SRAM_DW = 8;
 
     assign bidir_cs = '0;
     assign bidir_sl = '0;
@@ -216,41 +208,6 @@ module chip_core #(
         {DATA_W{1'b0}},
         {ADDR_W{1'b0}}
     };
-
-    logic [7:0] sram_0_out;
-    logic [7:0] sram_1_out;
-
-    (* keep *)
-    `gf180mcu_xxx_ip_sram__sram512x8m8wm1 sram_0 (
-        `ifdef USE_POWER_PINS
-        .VDD  (VDD),
-        .VSS  (VSS),
-        `endif
-        .CLK  (clk),
-        .CEN  (1'b1),
-        .GWEN (1'b0),
-        .WEN  (8'b0),
-        .A    ({SRAM_AW{1'b0}}),
-        .D    ({SRAM_DW{1'b0}}),
-        .Q    (sram_0_out)
-    );
-
-    (* keep *)
-    `gf180mcu_xxx_ip_sram__sram512x8m8wm1 sram_1 (
-        `ifdef USE_POWER_PINS
-        .VDD  (VDD),
-        .VSS  (VSS),
-        `endif
-        .CLK  (clk),
-        .CEN  (1'b1),
-        .GWEN (1'b0),
-        .WEN  (8'b0),
-        .A    ({SRAM_AW{1'b0}}),
-        .D    ({SRAM_DW{1'b0}}),
-        .Q    (sram_1_out)
-    );
-
-    (* keep *) wire [15:0] sram_mix = {sram_1_out, sram_0_out};
 
 endmodule
 

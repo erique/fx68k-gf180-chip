@@ -143,9 +143,6 @@ def chip_top_runner():
         sources.append(proj_path / "../build/fx68k-v/uRom.v")
         sources.append(proj_path / "../build/fx68k-v/nanoRom.v")
 
-    sources += [
-        Path(pdk_root) / pdk / f"libs.ref/{sram}/verilog/{sram}__sram512x8m8wm1.v",
-    ]
     if gl:
         sources += [
             Path(pdk_root) / pdk / f"libs.ref/{pad}/verilog/{pad}.v",
