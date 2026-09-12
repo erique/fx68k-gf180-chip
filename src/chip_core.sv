@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 `default_nettype none
+`timescale 1ns / 1ns
 
 `include "generated_defines.svh"
 `include "slot_defines.svh"

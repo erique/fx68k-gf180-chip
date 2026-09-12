@@ -29,6 +29,19 @@ BR/BG/BGACK `[52:54]`, IPL0–2 `[55:57]`.
 Four former I/O DVDD sites are GPIO. The stock wafer.space COB straps those
 balls to 5 V; a full 68000 pinout needs a carrier that does not.
 
+## Timing
+
+`clk_PAD` is 50 ns (20 MHz die clock) = 2× 68000 PHI = 10 MHz
+68000-equivalent (`enPhi1`/`enPhi2` /2 in `chip_core`). Slack at 50 ns is
+not Fmax.
+
+Sign-off SDC is `librelane/chip_top.sdc`: UM Ninth Edition §10.10 10 MHz
+column pad AC vs `clk_PAD` / `bidir_PAD` / `rst_n_PAD`, plus core
+Ir→microAddr/nanoAddr multicycle from `fx68k/constraints/fx68k.sdc`.
+Typical-only quit policy (`TIMING_VIOLATION_CORNERS` `*tt*`); SS setup can
+fail while the run is green. That is not SS sign-off and not a claim that
+the 68000 bus is closed.
+
 ## Prerequisites
 
 The project template uses the open_pdks gf180mcuD variant of the PDK.
