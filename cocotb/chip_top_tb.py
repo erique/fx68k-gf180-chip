@@ -55,37 +55,26 @@ async def start_up(dut):
     await reset(dut.rst_n_PAD)
 
 
+# Clocks after reset before checking pads are driven (not X).
+SMOKE_CYCLES = 32
+
+
 @cocotb.test()
-async def test_counter(dut):
-    """Run the counter test"""
+async def test_reset_smoke(dut):
+    """After reset, bidir pads are driven (fx68k, not the template counter)."""
 
-    # Create a logger for this testbench
-    logger = logging.getLogger("my_testbench")
-
+    logger = logging.getLogger("fx68k_tb")
     logger.info("Startup sequence...")
-
-    # Start up
     await start_up(dut)
 
-    logger.info("Running the test...")
-
-    # Wait for some time...
-    await ClockCycles(dut.clk_PAD, 10)
-
-    # Please note that cocotb cannpt write to individual bits of a vector.
-    # If you need to write to individual bits, you can separate e.g. the 
-    # bidir_PAD vector into individual bits through a tb wrapper.
-    # Even better, use individual pad names for each bit.
-
-    # Start the counter by setting all inputs to 1
+    # Inactive-high 68000 inputs (HALTn, etc.). DTACKn is pulled down on-die.
     dut.input_PAD.value = -1
 
-    # Wait for a number of clock cycles
-    await ClockCycles(dut.clk_PAD, 100)
+    await ClockCycles(dut.clk_PAD, SMOKE_CYCLES)
 
-    # Check the end result of the counter
-    assert dut.bidir_PAD.value == 100 - 1
-
+    bidir = dut.bidir_PAD.value
+    assert bidir.is_resolvable, f"bidir_PAD has X/Z after reset: {bidir}"
+    logger.info("bidir_PAD=%s", bidir)
     logger.info("Done!")
 
 
@@ -116,6 +105,9 @@ def chip_top_runner():
     else:
         sources.append(proj_path / "../src/chip_top.sv")
         sources.append(proj_path / "../src/chip_core.sv")
+        sources.append(proj_path / "../build/fx68k-v/fx68k.v")
+        sources.append(proj_path / "../build/fx68k-v/uRom.v")
+        sources.append(proj_path / "../build/fx68k-v/nanoRom.v")
 
     sources += [
         # IO pad models
