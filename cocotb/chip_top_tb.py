@@ -55,26 +55,36 @@ async def start_up(dut):
     await reset(dut.rst_n_PAD)
 
 
-# Clocks after reset before checking pads are driven (not X).
+# Clocks after reset before checking pads.
 SMOKE_CYCLES = 32
+
+# bidir_PAD map from src/chip_core.sv (MSB-first string index).
+# [39:34] controls, [33:18] data (Hi-Z on read), [17:0] eab[18:1].
+BIDIR_CTRL_CHARS = 6
+BIDIR_DATA_CHARS = 16
 
 
 @cocotb.test()
 async def test_reset_smoke(dut):
-    """After reset, bidir pads are driven (fx68k, not the template counter)."""
+    """After reset, address and control pads are driven. Data may be Z on a read."""
 
     logger = logging.getLogger("fx68k_tb")
     logger.info("Startup sequence...")
     await start_up(dut)
 
-    # Inactive-high 68000 inputs (HALTn, etc.). DTACKn is pulled down on-die.
+    # Inactive-high 68000 inputs (HALTn, etc.).
     dut.input_PAD.value = -1
 
     await ClockCycles(dut.clk_PAD, SMOKE_CYCLES)
 
-    bidir = dut.bidir_PAD.value
-    assert bidir.is_resolvable, f"bidir_PAD has X/Z after reset: {bidir}"
-    logger.info("bidir_PAD=%s", bidir)
+    bits = str(dut.bidir_PAD.value)
+    logger.info("bidir_PAD=%s", bits)
+    assert "x" not in bits.lower(), f"bidir_PAD has X after reset: {bits}"
+
+    ctrl = bits[:BIDIR_CTRL_CHARS]
+    addr = bits[BIDIR_CTRL_CHARS + BIDIR_DATA_CHARS :]
+    assert "z" not in ctrl.lower(), f"control pads Hi-Z: {ctrl}"
+    assert "z" not in addr.lower(), f"address pads Hi-Z: {addr}"
     logger.info("Done!")
 
 
