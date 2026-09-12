@@ -157,6 +157,26 @@ module chip_core #(
         .eab      (eab)
     );
 
+    // HALTn is sampled on PHI1 inside fx68k (Halti). Match that edge so
+    // pad A/D do not Hi-Z a PHI before the core stops starting cycles.
+    logic halti;
+    always_ff @(posedge clk) begin
+        if (extReset) begin
+            halti <= 1'b1;
+        end else if (enPhi1) begin
+            halti <= HALTn;
+        end
+    end
+
+    // Table 3-4 Hi-Z: A/D on HALT and on bus relinquish; AS/R/W/UDS/LDS/
+    // VMA/FC on bus relinquish only. BG and E stay driven. Relinquish is
+    // BG asserted and AS negated (UM §5.2: T and AS negated).
+    wire asInactive = (ASn === 1'b1);
+    wire busRelinquish = (BGn === 1'b0) && asInactive;
+    wire haltHiz = ((halti === 1'b0) || (oHALTEDn === 1'b0)) && asInactive;
+    wire addrDataHiz = busRelinquish || haltHiz;
+    wire grantHiz = busRelinquish;
+
     // Packed concatenations (MSB=IPL2 … LSB=A1). Icarus does not drive
     // pad A from always_comb into output wires.
     assign bidir_out = {
@@ -178,14 +198,14 @@ module chip_core #(
         1'b0,
         1'b1,
         1'b0,
-        3'b111,
-        2'b11,
+        {3{~grantHiz}},
+        ~grantHiz, 1'b1,
         1'b0,
         (oHALTEDn === 1'b0),
         2'b00,
-        4'b1111,
-        {DATA_W{~eRWn}},
-        {ADDR_W{1'b1}}
+        {4{~grantHiz}},
+        {DATA_W{~eRWn & ~addrDataHiz}},
+        {ADDR_W{~addrDataHiz}}
     };
     assign bidir_ie = ~bidir_oe;
     assign bidir_pu = {

@@ -29,6 +29,37 @@ BR/BG/BGACK `[52:54]`, IPL0–2 `[55:57]`.
 Four former I/O DVDD sites are GPIO. The stock wafer.space COB straps those
 balls to 5 V; a full 68000 pinout needs a carrier that does not.
 
+Pad OE (`chip_core` `bidir_oe`) follows MC68000UM Table 3-4 (68000 pins, not
+68008 A0/DS/MODE). Socket 5 V / UM AC ns is not this block.
+
+| Mnemonic | RTL | Pad OE vs Table 3-4 | Test |
+| --- | --- | --- | --- |
+| A1–A23 | `eab` | Hi-Z on HALT (AS negated) and on bus grant (`BGn` & AS negated) | reset smoke; halt; grant |
+| D0–D15 | `oEdb` / `iEdb` | Write-only (`~eRWn`) plus same Hi-Z as A | reset smoke; halt; grant |
+| AS, R/W, UDS, LDS | `ASn` `eRWn` `UDSn` `LDSn` | Driven on HALT; Hi-Z on bus grant | halt; grant |
+| VMA, FC0–2 | `VMAn` `FC*` | Driven on HALT; Hi-Z on bus grant | halt; grant |
+| BG | `BGn` | Driven (not Hi-Z on grant) | grant |
+| E | `E` | Driven (not Hi-Z) | grant; halt |
+| RESET, HALT | `oRESETn` `oHALTEDn` | Open-drain: drive 0 only (`=== 1'b0` OE) | reset smoke; halt |
+| DTACK, BR, BGACK, IPL, BERR, VPA, CLK | inputs / CLK | Input or clock; no Hi-Z columns | driven as inputs in TB |
+
+`fx68k` HALTn is single-step: new bus cycles are blocked (`busAvail` includes
+Halti). It is not a full 68000 halt of the execution unit. Pad A/D Hi-Z when
+Halti or `oHALTEDn` is low and AS is negated.
+
+Not on this die as 68000-complete:
+
+- Bus retry (`BERR`+`HALT`, not address error, not RMW): fx68k ties
+  `busRetry` to 0.
+- fx68k `addrOe` / `dataOe` are internal only; pad data OE is `~eRWn` when
+  not Hi-Z.
+- 6800 `E`/`VMA`/`VPA` (and autovector on VPA during IACK) exist in the
+  core; no cocotb for that protocol.
+
+Grant/halt three-state is extra OE on A, D, AS, UDS, LDS, R/W, VMA, FC.
+`librelane/chip_top.sdc` uses UM output_delay on those pads; Hi-Z delay is
+not in that file.
+
 ## Timing
 
 `clk_PAD` is 50 ns (20 MHz die clock) = 2× 68000 PHI = 10 MHz

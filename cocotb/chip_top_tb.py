@@ -23,18 +23,39 @@ slot = os.getenv("SLOT", "1x1")
 hdl_toplevel = "chip_top" if gl else "chip_core"
 
 # bidir_PAD indices (src/chip_core.sv)
+PAD_A_LSB = 0
+PAD_A_MSB = 22
+PAD_D_LSB = 23
+PAD_D_MSB = 38
+PAD_AS = 39
+PAD_UDS = 40
+PAD_LDS = 41
+PAD_RW = 42
 PAD_DTACK = 43
 PAD_BERR = 44
 PAD_HALT = 45
 PAD_VPA = 46
+PAD_E = 47
+PAD_VMA = 48
+PAD_FC0 = 49
+PAD_FC1 = 50
+PAD_FC2 = 51
 PAD_BR = 52
+PAD_BG = 53
 PAD_BGACK = 54
 PAD_IPL0 = 55
 PAD_IPL1 = 56
 PAD_IPL2 = 57
-PAD_A_MSB = 22
-PAD_D_LSB = 23
-PAD_D_MSB = 38
+
+GRANT_HIZ_PADS = (
+    tuple(range(PAD_A_LSB, PAD_A_MSB + 1))
+    + tuple(range(PAD_D_LSB, PAD_D_MSB + 1))
+    + (PAD_AS, PAD_UDS, PAD_LDS, PAD_RW, PAD_VMA, PAD_FC0, PAD_FC1, PAD_FC2)
+)
+HALT_HIZ_PADS = tuple(range(PAD_A_LSB, PAD_A_MSB + 1)) + tuple(
+    range(PAD_D_LSB, PAD_D_MSB + 1)
+)
+HALT_DRIVEN_STROBES = (PAD_AS, PAD_UDS, PAD_LDS, PAD_RW, PAD_VMA, PAD_FC0, PAD_FC1, PAD_FC2)
 
 
 async def set_defaults(dut):
@@ -71,6 +92,46 @@ def drive_core_inputs(dut):
     n = len(dut.bidir_in)
     ones = (1 << n) - 1
     dut.bidir_in.value = ones & ~(1 << PAD_DTACK)
+
+
+def set_bidir_bit(dut, idx, val):
+    cur = int(dut.bidir_in.value)
+    if val:
+        dut.bidir_in.value = cur | (1 << idx)
+    else:
+        dut.bidir_in.value = cur & ~(1 << idx)
+
+
+def sig_bin(sig):
+    return str(sig.value).lower().replace(" ", "")
+
+
+def oe_bit(dut, idx):
+    bits = sig_bin(dut.bidir_oe)
+    return bits[len(bits) - 1 - idx]
+
+
+async def wait_pred(clk, pred, max_cycles, msg):
+    for _ in range(max_cycles):
+        await RisingEdge(clk)
+        if pred():
+            return
+    raise AssertionError(msg)
+
+
+async def wait_asn_level(dut, clk, level, max_cycles=4000):
+    want = "1" if level else "0"
+    await wait_pred(
+        clk,
+        lambda: sig_bin(dut.ASn) == want,
+        max_cycles,
+        f"ASn did not become {want}",
+    )
+
+
+def assert_oe(dut, indices, want, label):
+    bad = [i for i in indices if oe_bit(dut, i) != want]
+    assert not bad, f"{label}: bidir_oe[{bad}] != {want}"
 
 
 async def start_up(dut):
@@ -110,7 +171,72 @@ async def test_reset_smoke(dut):
         logger.info("eab=%s ASn=%s", eab, asn)
         assert "x" not in eab.lower(), f"eab still X after reset: {eab}"
         assert asn in ("0", "1"), f"ASn still X after reset: {asn}"
+        assert sig_bin(dut.BGn) == "1", f"BGn X/asserted after reset: {dut.BGn.value}"
+        assert_oe(dut, range(PAD_A_LSB, PAD_A_MSB + 1), "1", "A after reset")
+        assert_oe(
+            dut,
+            (PAD_AS, PAD_UDS, PAD_LDS, PAD_RW, PAD_E, PAD_VMA, PAD_BG, PAD_FC0, PAD_FC1, PAD_FC2),
+            "1",
+            "strobes/E/VMA/FC/BG after reset",
+        )
+        assert_oe(dut, (PAD_HALT,), "0", "HALT OD idle")
+        assert sig_bin(dut.rst_oe) == "0", "RESET OD idle"
     logger.info("Done!")
+
+
+WAIT_CYCLES = 4000
+
+
+@cocotb.test()
+async def test_bus_grant_hiz(dut):
+    """Table 3-4: on bus relinquish, Hi-Z A/D/AS/UDS/LDS/R/W/VMA/FC; BG stays driven."""
+    if gl:
+        return
+
+    await start_up(dut)
+    clk = dut.clk
+
+    await wait_asn_level(dut, clk, 0)
+    await wait_asn_level(dut, clk, 1)
+    set_bidir_bit(dut, PAD_BR, 0)
+
+    await wait_pred(
+        clk,
+        lambda: sig_bin(dut.BGn) == "0" and sig_bin(dut.ASn) == "1",
+        WAIT_CYCLES,
+        "BGn did not assert with ASn inactive",
+    )
+
+    assert_oe(dut, GRANT_HIZ_PADS, "0", "grant Hi-Z")
+    assert_oe(dut, (PAD_BG, PAD_E), "1", "BG/E stay driven on grant")
+    assert_oe(dut, (PAD_HALT, PAD_DTACK, PAD_BERR, PAD_BR, PAD_BGACK), "0", "inputs stay input")
+
+
+@cocotb.test()
+async def test_halt_hiz(dut):
+    """Table 3-4: on HALT, Hi-Z A/D only; AS/UDS/LDS/R/W/VMA/FC stay driven."""
+    if gl:
+        return
+
+    await start_up(dut)
+    clk = dut.clk
+
+    await wait_asn_level(dut, clk, 0)
+    set_bidir_bit(dut, PAD_HALT, 0)
+    await wait_pred(
+        clk,
+        lambda: sig_bin(dut.ASn) == "1"
+        and sig_bin(dut.BGn) == "1"
+        and all(oe_bit(dut, i) == "0" for i in HALT_HIZ_PADS),
+        WAIT_CYCLES,
+        "HALT did not Hi-Z A/D with ASn inactive",
+    )
+
+    assert sig_bin(dut.BGn) == "1", f"BG asserted during HALT-only: {dut.BGn.value}"
+    assert_oe(dut, HALT_HIZ_PADS, "0", "HALT A/D Hi-Z")
+    assert_oe(dut, HALT_DRIVEN_STROBES, "1", "HALT strobes/FC/VMA driven")
+    assert_oe(dut, (PAD_BG, PAD_E), "1", "BG/E stay driven on HALT")
+    assert_oe(dut, (PAD_HALT,), "0", "external HALT is input (OD off)")
 
 
 def chip_top_runner():
