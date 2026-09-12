@@ -118,6 +118,12 @@ To run the GL (gate-level) simulation, run the following command:
 make sim-gl
 ```
 
+GL is `chip_top` plus `final/pnl`. The smoke test checks pad PU/PD inputs
+(DTACK/BERR/VPA/BR/BGACK/IPL). CPU-driven pads (A/D/strobes/FC/E/BG/HALT)
+are X: the netlist uses `dffq` (sync reset) and RESET/HALT pad OE starts X,
+so the pad `bufif1` does not deliver `rst_n_PAD` into the core. Hi-Z tests
+are RTL-only (`chip_core`). Do not assign packed `bidir_PAD`.
+
 > [!NOTE]
 > You need to have the latest implementation of your design in the `final/` folder. After a run has completed without errors, the final views will be copied to `final/`.
 
