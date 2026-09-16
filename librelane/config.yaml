@@ -68,7 +68,7 @@ IGNORE_DISCONNECTED_MODULES:
 CLOCK_PORT: clk_PAD
 # Isolation clkbuf Z, not clk_pad/Y (gf180 IO Y max_fanout 1).
 CLOCK_NET: clk_PAD2CORE
-CLOCK_PERIOD: 50 # 20 MHz clk; 10 MHz 68000-equivalent (enPhi1/enPhi2 /2)
+CLOCK_PERIOD: 16.667 # 60 MHz clk; 30 MHz 68000-equivalent (enPhi1/enPhi2 /2)
 
 # Pad-Y isolation nets and D0-D15 hold inverter instances. Do not match
 # hinv.net (chain output); the resizer must be able to buffer that net.

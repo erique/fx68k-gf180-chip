@@ -1,8 +1,8 @@
 # chip_top pad STA: MC68000 asynchronous-bus AC vs clk_PAD.
 #
-# clk_PAD is 2× 68000 PHI. CLOCK_PERIOD 50 ns → 20 MHz die clock → 10 MHz
-# 68000-equivalent (enPhi1/enPhi2 divide-by-2 in chip_core). Do not treat
-# CLOCK_PERIOD as a PHI period.
+# clk_PAD is 2× 68000 PHI. CLOCK_PERIOD 16.667 ns → 60 MHz die clock →
+# 30 MHz 68000-equivalent (enPhi1/enPhi2 divide-by-2 in chip_core). Do
+# not treat CLOCK_PERIOD as a PHI period.
 #
 # Pad delays are UM Ninth Edition §10.10, 10 MHz column
 # (fx68k/docs/MC68000UM.txt). Encoded vs clk_PAD so STA checks the same
@@ -19,7 +19,7 @@ if {![info exists clk_period]} {
     if {[info exists ::env(CLOCK_PERIOD)] && $::env(CLOCK_PERIOD) ne ""} {
         set clk_period $::env(CLOCK_PERIOD)
     } else {
-        set clk_period 50.0
+        set clk_period 16.667
     }
 }
 
@@ -31,7 +31,7 @@ if {[info exists ::env(CLOCK_PORT)] && $::env(CLOCK_PORT) ne ""} {
 }
 
 # 68000 PHI period is 2× clk. Named so the clk-vs-PHI relationship is a
-# current fact, not a buried 50 ns.
+# current fact, not a buried period.
 set phi_period_ns [expr {$clk_period * 2.0}]
 
 set clk_port [get_ports $clk_port_name]
@@ -74,8 +74,8 @@ if {[info exists ::env(MAX_CAPACITANCE_CONSTRAINT)]} {
 # UM §10.10 10 MHz column (ns). Spec numbers vs PHI edges.
 # set_output_delay -max (clk_period - tco_max) encodes tco <= tco_max.
 # set_input_delay  -max (clk_period - tsu)     encodes tsu >= tsu_min at the pin.
-# When tco_max > clk_period (VMA spec 40 = 70 ns), output_delay max is 0
-# (one clk; tighter than the UM budget).
+# output_delay max is (clk_period - tco_max) and may be negative when
+# tco_max > clk_period (UM ns vs a faster die clock).
 # ---------------------------------------------------------------------------
 
 set um_t6_addr_tco_max          50.0
@@ -127,12 +127,7 @@ set pad_ipl2   57
 
 proc um_out_delay_max {tco_max} {
     global clk_period
-    set d [expr {$clk_period - $tco_max}]
-    if {$d < 0.0} {
-        puts "\[INFO] tco_max ${tco_max} ns > clk_period ${clk_period} ns; output_delay max 0 (one clk)"
-        set d 0.0
-    }
-    return $d
+    return [expr {$clk_period - $tco_max}]
 }
 
 proc um_in_delay_max {tsu} {

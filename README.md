@@ -75,9 +75,8 @@ Netgen (`final/metrics.json` LVS counts 0 on a closed run).
 
 ## Timing
 
-`clk_PAD` is 50 ns (20 MHz die clock) = 2× 68000 PHI = 10 MHz
-68000-equivalent (`enPhi1`/`enPhi2` /2 in `chip_core`). Slack at 50 ns is
-not Fmax.
+`clk_PAD` is 16.667 ns (60 MHz die clock) = 2× 68000 PHI = 30 MHz
+68000-equivalent (`enPhi1`/`enPhi2` /2 in `chip_core`).
 
 Sign-off SDC is `librelane/chip_top.sdc`: UM Ninth Edition §10.10 10 MHz
 column pad AC vs `clk_PAD` / `bidir_PAD` / `rst_n_PAD`, plus core
