@@ -34,31 +34,44 @@ Pad OE (`chip_core` `bidir_oe`) follows MC68000UM Table 3-4 (68000 pins, not
 
 | Mnemonic | RTL | Pad OE vs Table 3-4 | Test |
 | --- | --- | --- | --- |
-| A1–A23 | `eab` | Hi-Z on HALT (AS negated) and on bus grant (`BGn` & AS negated) | reset smoke; halt; grant |
-| D0–D15 | `oEdb` / `iEdb` | Write-only (`~eRWn`) plus same Hi-Z as A | reset smoke; halt; grant |
-| AS, R/W, UDS, LDS | `ASn` `eRWn` `UDSn` `LDSn` | Driven on HALT; Hi-Z on bus grant | halt; grant |
-| VMA, FC0–2 | `VMAn` `FC*` | Driven on HALT; Hi-Z on bus grant | halt; grant |
-| BG | `BGn` | Driven (not Hi-Z on grant) | grant |
-| E | `E` | Driven (not Hi-Z) | grant; halt |
+| A1–A23 | `eab` | Hi-Z on HALT (AS negated) and on bus grant (`BGn` & AS negated) | reset smoke; halt; grant; BGACK |
+| D0–D15 | `oEdb` / `iEdb` | Write-only (`~eRWn`) plus same Hi-Z as A | write; halt; grant |
+| AS, R/W, UDS, LDS | `ASn` `eRWn` `UDSn` `LDSn` | Driven on HALT; Hi-Z on bus grant | halt; grant; write |
+| VMA, FC0–2 | `VMAn` `FC*` | Driven on HALT; Hi-Z on bus grant | halt; grant; VPA; IACK |
+| BG | `BGn` | Driven (not Hi-Z on grant) | grant; BGACK |
+| E | `E` | Driven (not Hi-Z) | grant; halt; VPA |
 | RESET, HALT | `oRESETn` `oHALTEDn` | Open-drain: drive 0 only (`=== 1'b0` OE) | reset smoke; halt |
-| DTACK, BR, BGACK, IPL, BERR, VPA, CLK | inputs / CLK | Input or clock; no Hi-Z columns | driven as inputs in TB |
+| DTACK, BR, BGACK, IPL, BERR, VPA, CLK | inputs / CLK | Input or clock; no Hi-Z columns | IACK; BERR; VPA; BGACK |
 
 `fx68k` HALTn is single-step: new bus cycles are blocked (`busAvail` includes
 Halti). It is not a full 68000 halt of the execution unit. Pad A/D Hi-Z when
 Halti or `oHALTEDn` is low and AS is negated.
 
-Not on this die as 68000-complete:
+Gaps (not treated as passing):
 
-- Bus retry (`BERR`+`HALT`, not address error, not RMW): fx68k ties
-  `busRetry` to 0.
 - fx68k `addrOe` / `dataOe` are internal only; pad data OE is `~eRWn` when
   not Hi-Z.
-- 6800 `E`/`VMA`/`VPA` (and autovector on VPA during IACK) exist in the
-  core; no cocotb for that protocol.
+- SingleStepTests/680x0 and WinUAE `cputest` are ISA suites for the
+  `fx68k/` core (pad-less), not this chip TB.
+- UM §10.10 pad AC ns is `librelane/chip_top.sdc` (and `final/sdf`). Protocol
+  tests use PHI/clock counts, not those nanoseconds.
+
+Retry is BERR+HALT, not address error, not RMW (`test_bus_retry`). HALT stalls
+the EU after the current cycle (`~Halti & ~addrOe` in wClk) as well as
+three-stating A/D. `make sim-gl` uses `chip_top_gl_wrap` (per-bit pad drive)
+and forces `rst_oe`/`extReset`. Address pads can still be X on the current
+pad-ring pnl; a running gate CPU is `make sim-gl-core`.
 
 Grant/halt three-state is extra OE on A, D, AS, UDS, LDS, R/W, VMA, FC.
 `librelane/chip_top.sdc` uses UM output_delay on those pads; Hi-Z delay is
 not in that file.
+
+Protocol tests (`make sim` and `make sim-gl-core`): reset SSP/PC, write,
+byte UDS/LDS, IACK autovector/vectored/spurious, IPL 1–6, RESET OD,
+TAS RMW (no BG), BERR, VPA/VMA/E period, BR-during-HALT, DTACK wait-state
+and BERR-timeout slave. `sim-gl-core` is pad-less
+`chip_core` gates (`build/chip-core-gl/chip_core.nl.v`). LVS is LibreLane
+Netgen (`final/metrics.json` LVS counts 0 on a closed run).
 
 ## Timing
 
@@ -69,9 +82,9 @@ not Fmax.
 Sign-off SDC is `librelane/chip_top.sdc`: UM Ninth Edition §10.10 10 MHz
 column pad AC vs `clk_PAD` / `bidir_PAD` / `rst_n_PAD`, plus core
 Ir→microAddr/nanoAddr multicycle from `fx68k/constraints/fx68k.sdc`.
-Typical-only quit policy (`TIMING_VIOLATION_CORNERS` `*tt*`); SS setup can
-fail while the run is green. That is not SS sign-off and not a claim that
-the 68000 bus is closed.
+Typical-only quit policy (`TIMING_VIOLATION_CORNERS` / `HOLD_VIOLATION_CORNERS`
+`*tt*`); SS setup can fail while the run is green. That is not SS sign-off
+and not a claim that the 68000 bus is closed.
 
 ## Prerequisites
 
@@ -106,23 +119,38 @@ make librelane-klayout
 
 For the verification of the chip we use [cocotb](https://www.cocotb.org/). Cocotb is a Python-based testbench environment. The simulator that is used by the project template is [Icarus Verilog](https://github.com/steveicarus/iverilog).
 
-The testbench is located in `cocotb/chip_top_tb.py`. To run the RTL simulation, run the following command:
+The testbench is located in `cocotb/chip_top_tb.py`. RTL (`chip_core`):
 
 ```
 make sim
 ```
 
-To run the GL (gate-level) simulation, run the following command:
+Pad-less gate-level `chip_core` (same protocol tests):
+
+```
+make sim-gl-core
+```
+
+RTL `chip_top` plus GF180 pad cells (protocol on `bidir_PAD` / `pad[]`):
+
+```
+make sim-pads
+```
+
+`sim-pads` runs the bus tests on `bidir_PAD` via `chip_top_gl_wrap`, including
+halt/grant Hi-Z (pad `Z`) and RESET open-drain (CPU pulls `rst_n_PAD`).
+
+Pad-ring gate-level `chip_top` (after `final/` exists):
 
 ```
 make sim-gl
 ```
 
-GL is `chip_top` plus `final/pnl`. The smoke test checks pad PU/PD inputs
-(DTACK/BERR/VPA/BR/BGACK/IPL). CPU-driven pads (A/D/strobes/FC/E/BG/HALT)
-are X: the netlist uses `dffq` (sync reset) and RESET/HALT pad OE starts X,
-so the pad `bufif1` does not deliver `rst_n_PAD` into the core. Hi-Z tests
-are RTL-only (`chip_core`). Do not assign packed `bidir_PAD`.
+GL `chip_top` plus `final/pnl`: smoke checks pad PU/PD inputs
+(DTACK/BERR/VPA/BR/BGACK/IPL). CPU-driven pads stay X: the netlist uses
+`dffq` (sync reset) and RESET/HALT pad OE starts X, so `bufif1` does not
+deliver `rst_n_PAD` into the core. Protocol tests skip on that DUT. Do not
+assign packed `bidir_PAD`.
 
 > [!NOTE]
 > You need to have the latest implementation of your design in the `final/` folder. After a run has completed without errors, the final views will be copied to `final/`.

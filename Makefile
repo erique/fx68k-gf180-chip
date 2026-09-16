@@ -139,6 +139,18 @@ sim-gl: clone-pdk defines ## Run gate-level simulation with cocotb (after copy-f
 	cd cocotb; GL=1 PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} PAD=${PAD} SCL=${SCL} SRAM=${SRAM} python3 chip_top_tb.py
 .PHONY: sim-gl
 
+chip-core-gl: clone-pdk defines fx68k-rtl ## Pad-less chip_core gate netlist (no pads)
+	./scripts/chip-core-gl.sh
+.PHONY: chip-core-gl
+
+sim-gl-core: chip-core-gl ## Gate-level chip_core (same protocol tests as RTL)
+	cd cocotb; GL_CORE=1 PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} PAD=${PAD} SCL=${SCL} SRAM=${SRAM} python3 chip_top_tb.py
+.PHONY: sim-gl-core
+
+sim-pads: clone-pdk defines fx68k-rtl ## RTL chip_top + pad cells; protocol on bidir_PAD
+	cd cocotb; PADS=1 PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} PAD=${PAD} SCL=${SCL} SRAM=${SRAM} python3 chip_top_tb.py
+.PHONY: sim-pads
+
 sim-view: ## View simulation waveforms in GTKWave
 	gtkwave cocotb/sim_build/chip_top.fst
 .PHONY: sim-view

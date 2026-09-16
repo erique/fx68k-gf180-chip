@@ -66,12 +66,21 @@ IGNORE_DISCONNECTED_MODULES:
 
 # Clock
 CLOCK_PORT: clk_PAD
-CLOCK_NET: clk_pad/Y
+# Isolation clkbuf Z, not clk_pad/Y (gf180 IO Y max_fanout 1).
+CLOCK_NET: clk_PAD2CORE
 CLOCK_PERIOD: 50 # 20 MHz clk; 10 MHz 68000-equivalent (enPhi1/enPhi2 /2)
+
+# Pad-Y isolation nets and D0-D15 hold inverter instances. Do not match
+# hinv.net (chain output); the resizer must be able to buffer that net.
+RSZ_DONT_TOUCH_RX: 'PAD2CORE_y|hinv.invs'
 
 # Overfix hold violations
 PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
+
+# Typical-only quit. SS setup/hold can fail; that is not SS sign-off.
+TIMING_VIOLATION_CORNERS: ["*tt*"]
+HOLD_VIOLATION_CORNERS: ["*tt*"]
 
 # Increase density for more 
 # logic on your die

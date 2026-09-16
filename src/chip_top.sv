@@ -58,7 +58,11 @@ module chip_top #(
 `endif
 );
 
+    // gf180 IO liberty default_max_fanout 1 on pad Y. Isolation buf so
+    // pad/Y fans out to one pin; PAD2CORE (Z) is free for CTS/resizer.
+    (* keep *) wire clk_PAD2CORE_y;
     wire clk_PAD2CORE;
+    (* keep *) wire rst_PAD2CORE_y;
     wire rst_PAD2CORE;
     wire rst_CORE2PAD;
     wire rst_CORE2PAD_OE;
@@ -74,7 +78,14 @@ module chip_top #(
     wire [NUM_INPUT_PADS-1:0] input_CORE2PAD_PD;
 `endif
 
+    (* keep *) wire [NUM_BIDIR_PADS-1:0] bidir_PAD2CORE_y;
     wire [NUM_BIDIR_PADS-1:0] bidir_PAD2CORE;
+    // UM t29 data-in hold is 0 at the pin. Pad-Y min-delay is shorter than
+    // clk_PAD CTS insertion. Delay cells are buffers to the resizer and
+    // get sized to buf_*; even inv_1 chain on D0-D15 (chip_core pad map).
+    localparam PAD_D_LSB = 23;
+    localparam PAD_D_MSB = 38;
+    localparam PAD_Y_HOLD_INV_STAGES = 64;
     wire [NUM_BIDIR_PADS-1:0] bidir_CORE2PAD;
     wire [NUM_BIDIR_PADS-1:0] bidir_CORE2PAD_OE;
     wire [NUM_BIDIR_PADS-1:0] bidir_CORE2PAD_CS;
@@ -151,11 +162,22 @@ module chip_top #(
         .VSS    (VSS),
         `endif
     
-        .Y      (clk_PAD2CORE),
+        .Y      (clk_PAD2CORE_y),
         .PAD    (clk_PAD),
         
         .PU     (1'b0),
         .PD     (1'b0)
+    );
+    (* keep *)
+    gf180mcu_fd_sc_mcu7t5v0__clkbuf_16 clk_ybuf (
+        `ifdef USE_POWER_PINS
+        .VDD (VDD),
+        .VSS (VSS),
+        .VNW (VDD),
+        .VPW (VSS),
+        `endif
+        .I   (clk_PAD2CORE_y),
+        .Z   (clk_PAD2CORE)
     );
     
     // 68000 RESET: open-drain style bidir (CPU can pull low).
@@ -169,7 +191,7 @@ module chip_top #(
 
         .A      (rst_CORE2PAD),
         .OE     (rst_CORE2PAD_OE),
-        .Y      (rst_PAD2CORE),
+        .Y      (rst_PAD2CORE_y),
         .PAD    (rst_n_PAD),
 
         .CS     (rst_CORE2PAD_CS),
@@ -177,6 +199,17 @@ module chip_top #(
         .IE     (rst_CORE2PAD_IE),
         .PU     (rst_CORE2PAD_PU),
         .PD     (rst_CORE2PAD_PD)
+    );
+    (* keep *)
+    gf180mcu_fd_sc_mcu7t5v0__buf_1 rst_ybuf (
+        `ifdef USE_POWER_PINS
+        .VDD (VDD),
+        .VSS (VSS),
+        .VNW (VDD),
+        .VPW (VSS),
+        `endif
+        .I   (rst_PAD2CORE_y),
+        .Z   (rst_PAD2CORE)
     );
 
 `ifndef SLOT_1X1
@@ -214,7 +247,7 @@ module chip_top #(
         
             .A      (bidir_CORE2PAD[i]),
             .OE     (bidir_CORE2PAD_OE[i]),
-            .Y      (bidir_PAD2CORE[i]),
+            .Y      (bidir_PAD2CORE_y[i]),
             .PAD    (bidir_PAD[i]),
             
             .CS     (bidir_CORE2PAD_CS[i]),
@@ -224,6 +257,38 @@ module chip_top #(
             .PU     (bidir_CORE2PAD_PU[i]),
             .PD     (bidir_CORE2PAD_PD[i])
         );
+        wire ybuf_z;
+        (* keep *)
+        gf180mcu_fd_sc_mcu7t5v0__buf_1 ybuf (
+            `ifdef USE_POWER_PINS
+            .VDD (VDD),
+            .VSS (VSS),
+            .VNW (VDD),
+            .VPW (VSS),
+            `endif
+            .I   (bidir_PAD2CORE_y[i]),
+            .Z   (ybuf_z)
+        );
+        if ((i >= PAD_D_LSB) && (i <= PAD_D_MSB)) begin : hinv
+            wire [PAD_Y_HOLD_INV_STAGES:0] net;
+            assign net[0] = ybuf_z;
+            for (genvar s = 0; s < PAD_Y_HOLD_INV_STAGES; s++) begin : invs
+                (* keep *)
+                gf180mcu_fd_sc_mcu7t5v0__inv_1 inv (
+                    `ifdef USE_POWER_PINS
+                    .VDD (VDD),
+                    .VSS (VSS),
+                    .VNW (VDD),
+                    .VPW (VSS),
+                    `endif
+                    .I   (net[s]),
+                    .ZN  (net[s + 1])
+                );
+            end
+            assign bidir_PAD2CORE[i] = net[PAD_Y_HOLD_INV_STAGES];
+        end else begin : no_hinv
+            assign bidir_PAD2CORE[i] = ybuf_z;
+        end
     end
     endgenerate
 
@@ -255,7 +320,8 @@ module chip_top #(
         `endif
 
         .clk        (clk_PAD2CORE),
-        .rst_in     (rst_PAD2CORE),
+        // RESET insn drives the pad low; keep extReset clear while OE is on.
+        .rst_in     (rst_PAD2CORE | rst_CORE2PAD_OE),
         .rst_out    (rst_CORE2PAD),
         .rst_oe     (rst_CORE2PAD_OE),
         .rst_ie     (rst_CORE2PAD_IE),

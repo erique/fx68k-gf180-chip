@@ -90,6 +90,14 @@ jobs:
           # cocotb also returns 0 upon failure
           # check the simulation results
           ! grep failure cocotb/sim_build/results.xml
+      - name: Run pad-less gate-level simulation
+        run: |
+          nix develop --command make sim-gl-core
+          ! grep failure cocotb/sim_build/results.xml
+      - name: Run pad-ring RTL simulation
+        run: |
+          nix develop --command make sim-pads
+          ! grep failure cocotb/sim_build/results.xml
       - name: Implement the Chip
         if: success() || failure()
         run: |

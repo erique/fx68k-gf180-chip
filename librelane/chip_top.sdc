@@ -254,8 +254,31 @@ um_set_input "spec 47 IPL bidir_PAD\[57:55\]" \
 um_set_input "spec 47 RESET (input) rst_n_PAD" \
     $ports_reset $um_t47_async_setup_min $um_t8_addr_fc_hold_min
 
-set_load $um_cl_pf [all_outputs]
-puts "\[INFO] load ${um_cl_pf} pF (UM §10.10 note 1)"
+# UM §10.10 note 1 is package-pin C_L on CPU outputs, not clk_PAD.
+foreach _um_out [list $ports_addr $ports_fc $ports_strobes $ports_rw \
+                      $ports_data $ports_bg $ports_vma $ports_e] {
+    if {[llength $_um_out]} {
+        set_load $um_cl_pf $_um_out
+    }
+}
+puts "\[INFO] load ${um_cl_pf} pF on 68000 outputs (UM §10.10 note 1)"
+
+# Clocked I/O uses input_delay / output_delay. Combinational pad-to-pad
+# (BGACK → OE/IE) is not a UM same-edge check. OpenSTA has no
+# remove_from_collection; name the inout pads (not clk_PAD).
+set _io_pads [get_ports -quiet {rst_n_PAD bidir_PAD[*]}]
+if {[llength $_io_pads]} {
+    set_false_path -from $_io_pads -to $_io_pads
+    puts "\[INFO] false_path combinational pad-to-pad"
+}
+
+# IE->Y is not a 68000 data path (BGACK changing data-pad IE must not
+# time through the data-in hold chain to the capture flop). PAD->Y stays.
+set _pad_cells [concat [get_cells -quiet {bidir[*].pad}] [get_cells -quiet {rst_n_pad}]]
+if {[llength $_pad_cells]} {
+    set_disable_timing -from IE -to Y $_pad_cells
+    puts "\[INFO] disable_timing IE->Y on [llength $_pad_cells] pads"
+}
 
 if {[info exists ::env(CLOCK_UNCERTAINTY_CONSTRAINT)]} {
     puts "\[INFO] Setting clock uncertainty to: $::env(CLOCK_UNCERTAINTY_CONSTRAINT)"

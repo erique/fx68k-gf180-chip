@@ -104,10 +104,10 @@ module chip_core #(
     wire enPhi1 = ~phi;
     wire enPhi2 =  phi;
 
-    wire eRWn, ASn, LDSn, UDSn, E, VMAn;
-    wire FC0, FC1, FC2, BGn, oRESETn, oHALTEDn;
-    wire [15:0] oEdb;
-    wire [23:1] eab;
+    (* keep *) wire eRWn, ASn, LDSn, UDSn, E, VMAn;
+    (* keep *) wire FC0, FC1, FC2, BGn, oRESETn, oHALTEDn;
+    (* keep *) wire [15:0] oEdb;
+    (* keep *) wire [23:1] eab;
 
     wire HALTn  = bidir_in[PAD_HALT];
     wire DTACKn = bidir_in[PAD_DTACK];
@@ -120,8 +120,8 @@ module chip_core #(
     wire IPL2n  = bidir_in[PAD_IPL2];
     wire [15:0] iEdb = bidir_in[PAD_D_MSB:PAD_D_LSB];
 
-    // Only pull RESET/HALT low when the CPU output is 0. X would otherwise
-    // fight the pad driver in RTL sim.
+    // X oRESETn is not a drive. Do not AND with rst_in: RESET insn holds
+    // the pin low, and gating OE with rst_in would drop the pulse.
     assign rst_oe = (oRESETn === 1'b0);
     assign rst_ie = ~rst_oe;
 
@@ -170,9 +170,10 @@ module chip_core #(
 
     // Table 3-4 Hi-Z: A/D on HALT and on bus relinquish; AS/R/W/UDS/LDS/
     // VMA/FC on bus relinquish only. BG and E stay driven. Relinquish is
-    // BG asserted and AS negated (UM §5.2: T and AS negated).
+    // BG asserted and AS negated (UM §5.2), and while BGACK holds the bus
+    // after BG drops.
     wire asInactive = (ASn === 1'b1);
-    wire busRelinquish = (BGn === 1'b0) && asInactive;
+    wire busRelinquish = ((BGn === 1'b0) || (BGACKn === 1'b0)) && asInactive;
     wire haltHiz = ((halti === 1'b0) || (oHALTEDn === 1'b0)) && asInactive;
     wire addrDataHiz = busRelinquish || haltHiz;
     wire grantHiz = busRelinquish;

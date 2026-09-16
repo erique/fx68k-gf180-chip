@@ -54,6 +54,86 @@ p.write_text(text.replace(old, new, 1))
 print(f"patched {p}")
 PY
 
+python3 - "$WORK_DIR/fx68k.sv" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text()
+subs = [
+    (
+        "\twire BusRetry = 1'b0;\n",
+        "\twire BusRetry;\n",
+    ),
+    (
+        "\tassign wClk = waitBusCycle | ~BeI | iAddrErr | Err6591;\n",
+        "\tassign wClk = waitBusCycle | ~BeI | iAddrErr | Err6591 | (~Halti & ~addrOe);\n",
+    ),
+    (
+        """\tbusControl busControl( .Clks, .enT1, .enT4, .permStart( Nanod.permStart), .permStop( Nanod.waitBusFinish), .iStop,
+		.aob0, .isWrite( Nanod.isWrite), .isRmc( Nanod.isRmc), .isByte( busIsByte), .busAvail,
+		.bciWrite, .addrOe, .bgBlock, .waitBusCycle, .busStarting, .busAddrErr,
+		.rDtack, .BeDebounced, .Vpai,
+		.ASn, .LDSn, .UDSn, .eRWn);
+""",
+        """\tbusControl busControl( .Clks, .enT1, .enT4, .permStart( Nanod.permStart), .permStop( Nanod.waitBusFinish), .iStop,
+		.aob0, .isWrite( Nanod.isWrite), .isRmc( Nanod.isRmc), .isByte( busIsByte), .busAvail,
+		.bciWrite, .addrOe, .bgBlock, .waitBusCycle, .busStarting, .busAddrErr,
+		.rDtack, .BeDebounced, .Vpai, .Halti, .busRetry( BusRetry),
+		.ASn, .LDSn, .UDSn, .eRWn);
+""",
+    ),
+    (
+        """		input rDtack, BeDebounced, Vpai,
+		output ASn, output LDSn, output UDSn, eRWn);
+""",
+        """		input rDtack, BeDebounced, Vpai, Halti,
+		output busRetry,
+		output ASn, output LDSn, output UDSn, eRWn);
+""",
+    ),
+    (
+        """	// Bus retry not really supported.
+	// It's BERR and HALT and not address error, and not read-modify cycle.
+	wire busRetry = ~busAddrErr & 1'b0;
+""",
+        """	// Retry: BERR and HALT, not address error, not RMW (UM §5.4.2).
+	wire busRetry = ~busAddrErr & ~isRmcReg & BeDebounced & ~Halti;
+""",
+    ),
+    (
+        "\tassign bcReset = Clks.extReset | (addrOeDelay & BeDebounced & Vpai);\n",
+        "\tassign bcReset = Clks.extReset | (addrOeDelay & BeDebounced & Vpai & Halti);\n",
+    ),
+    (
+        "\tassign bgBlock = ((busPhase == S0) & ASn) | (busPhase == SRMC_RES);\n",
+        "\tassign bgBlock = ((busPhase == S0) & ASn) | (busPhase == SRMC_RES) | isRmcReg;\n",
+    ),
+    (
+        """		if( Clks.pwrUp) begin
+			rBerr <= 1'b0;
+			BeI <= 1'b0;
+		end
+""",
+        """		if( Clks.pwrUp) begin
+			rBerr <= 1'b0;
+			BeI <= 1'b0;
+			BeiDelay <= 1'b0;
+			rDtack <= 1'b1;
+			Halti <= 1'b1;
+			BRi <= 1'b1;
+			BgackI <= 1'b1;
+			Vpai <= 1'b1;
+		end
+""",
+    ),
+]
+for old, new in subs:
+    if old not in text:
+        raise SystemExit(f"error: retry/halt pattern not found in {p}: {old[:60]!r}")
+    text = text.replace(old, new, 1)
+p.write_text(text)
+print(f"patched retry/halt in {p}")
+PY
+
 "$SV2V" \
     --write="$OUT_DIR/fx68k.v" \
     --top=fx68k \
